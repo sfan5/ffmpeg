@@ -21,6 +21,7 @@
  */
 
 #include <jni.h>
+#include <android/log.h>
 
 #include "libavutil/avassert.h"
 #include "libavutil/mem.h"
@@ -381,6 +382,8 @@ done:
     return ret;
 }
 
+#define ALOGV(...) __android_log_print(ANDROID_LOG_VERBOSE, "mpv", __VA_ARGS__)
+
 char *ff_AMediaCodecList_getCodecNameByType(const char *mime, int profile, int encoder, void *log_ctx)
 {
     int ret;
@@ -403,6 +406,7 @@ char *ff_AMediaCodecList_getCodecNameByType(const char *mime, int profile, int e
     jobject capabilities = NULL;
     jobject profile_level = NULL;
     jobjectArray profile_levels = NULL;
+    jobjectArray color_formats = NULL;
 
     JNI_GET_ENV_OR_RETURN(env, log_ctx, NULL);
 
@@ -463,6 +467,7 @@ char *ff_AMediaCodecList_getCodecNameByType(const char *mime, int profile, int e
         if (!name) {
             goto done;
         }
+        ALOGV("looking at info: %s\n", name);
 
         if (codec_name) {
             (*env)->DeleteLocalRef(env, codec_name);
@@ -481,7 +486,7 @@ char *ff_AMediaCodecList_getCodecNameByType(const char *mime, int profile, int e
         type_count = (*env)->GetArrayLength(env, types);
         for (j = 0; j < type_count; j++) {
             int k;
-            int profile_count;
+            int profile_count, format_count;
 
             type = (*env)->GetObjectArrayElement(env, types, j);
             if (ff_jni_exception_check(env, 1, log_ctx) < 0) {
@@ -492,6 +497,7 @@ char *ff_AMediaCodecList_getCodecNameByType(const char *mime, int profile, int e
             if (!supported_type) {
                 goto done;
             }
+            ALOGV(" looking at type: %s\n", supported_type);
 
             if (av_strcasecmp(supported_type, mime)) {
                 goto done_with_type;
@@ -510,12 +516,14 @@ char *ff_AMediaCodecList_getCodecNameByType(const char *mime, int profile, int e
             profile_count = (*env)->GetArrayLength(env, profile_levels);
             if (!profile_count) {
                 found_codec = 1;
+                ALOGV("  OK: no profiles at all\n");
             }
             for (k = 0; k < profile_count; k++) {
                 int supported_profile = 0;
 
                 if (profile < 0) {
                     found_codec = 1;
+                    ALOGV("  OK: any profile goes\n");
                     break;
                 }
 
@@ -528,6 +536,7 @@ char *ff_AMediaCodecList_getCodecNameByType(const char *mime, int profile, int e
                 if (ff_jni_exception_check(env, 1, log_ctx) < 0) {
                     goto done;
                 }
+                ALOGV("  looking at profile 0x%08x\n", supported_profile);
 
                 found_codec = profile == supported_profile;
 
@@ -537,11 +546,34 @@ char *ff_AMediaCodecList_getCodecNameByType(const char *mime, int profile, int e
                 }
 
                 if (found_codec) {
+                    ALOGV("  OK\n");
                     break;
                 }
             }
 
+            color_formats = (*env)->GetObjectField(env, capabilities, jfields.color_formats_id);
+            if (ff_jni_exception_check(env, 1, log_ctx) < 0) {
+                goto done;
+            }
+
+            format_count = (*env)->GetArrayLength(env, color_formats);
+            for (k = 0; k < format_count; k++) {
+                int color_format;
+
+                (*env)->GetIntArrayRegion(env, color_formats, k, 1, &color_format);
+                if (ff_jni_exception_check(env, 1, log_ctx) < 0) {
+                    goto done;
+                }
+
+                ALOGV("  color format: 0x%08x\n", color_format);
+            }
+
 done_with_type:
+            if (color_formats) {
+                (*env)->DeleteLocalRef(env, color_formats);
+                color_formats = NULL;
+            }
+
             if (profile_levels) {
                 (*env)->DeleteLocalRef(env, profile_levels);
                 profile_levels = NULL;
@@ -609,6 +641,10 @@ done:
 
     if (profile_levels) {
         (*env)->DeleteLocalRef(env, profile_levels);
+    }
+
+    if (color_formats) {
+        (*env)->DeleteLocalRef(env, color_formats);
     }
 
     av_freep(&supported_type);
