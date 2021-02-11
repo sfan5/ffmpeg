@@ -294,6 +294,8 @@ static av_cold int mediacodec_decode_init(AVCodecContext *avctx)
 {
     int ret;
     int sdk_int;
+    int i;
+    const int *formats = ff_mediacodec_dec_preferred_color_formats;
 
     const char *codec_mime = NULL;
 
@@ -370,23 +372,35 @@ static av_cold int mediacodec_decode_init(AVCodecContext *avctx)
     ff_AMediaFormat_setInt32(format, "width", avctx->width);
     ff_AMediaFormat_setInt32(format, "height", avctx->height);
 
-    s->ctx = av_mallocz(sizeof(*s->ctx));
-    if (!s->ctx) {
-        av_log(avctx, AV_LOG_ERROR, "Failed to allocate MediaCodecDecContext\n");
-        ret = AVERROR(ENOMEM);
-        goto done;
-    }
+    for (i = 0; formats[i] >= 0; i++) {
+        if (formats[i]) {
+            av_log(avctx, AV_LOG_INFO, "Retrying with color-format=%d\n", formats[i]);
+            ff_AMediaFormat_setInt32(format, "color-format", formats[i]);
+        }
 
-    s->ctx->delay_flush = s->delay_flush;
+        s->ctx = av_mallocz(sizeof(*s->ctx));
+        if (!s->ctx) {
+            av_log(avctx, AV_LOG_ERROR, "Failed to allocate MediaCodecDecContext\n");
+            ret = AVERROR(ENOMEM);
+            goto done;
+        }
 
-    if ((ret = ff_mediacodec_dec_init(avctx, s->ctx, codec_mime, format)) < 0) {
-        s->ctx = NULL;
-        goto done;
+        s->ctx->delay_flush = s->delay_flush;
+
+        if ((ret = ff_mediacodec_dec_init(avctx, s->ctx, codec_mime, format)) < 0) {
+            s->ctx = NULL;
+        }
+        if (ret == 0)
+            break;
+        else if (ret != AVERROR(EINVAL))
+            goto done;
     }
+    if (ret != 0)
+        goto done;
 
     av_log(avctx, AV_LOG_INFO,
-           "MediaCodec started successfully: codec = %s, ret = %d\n",
-           s->ctx->codec_name, ret);
+           "MediaCodec started successfully: codec = %s\n",
+           s->ctx->codec_name);
 
     sdk_int = ff_Build_SDK_INT(avctx);
     if (sdk_int <= 23 &&

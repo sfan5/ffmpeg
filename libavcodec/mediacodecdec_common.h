@@ -72,6 +72,8 @@ typedef struct MediaCodecDecContext {
 
 } MediaCodecDecContext;
 
+extern const int ff_mediacodec_dec_preferred_color_formats[];
+
 int ff_mediacodec_dec_init(AVCodecContext *avctx,
                            MediaCodecDecContext *s,
                            const char *mime,

@@ -193,6 +193,13 @@ static const struct {
     { 0 }
 };
 
+const int ff_mediacodec_dec_preferred_color_formats[] = {
+    0, /* unset, must be first */
+    COLOR_FormatYUV420Planar,
+    COLOR_FormatYUV420SemiPlanar,
+    -1
+};
+
 static enum AVPixelFormat mcdec_map_color_format(AVCodecContext *avctx,
                                                  MediaCodecDecContext *s,
                                                  int color_format)
